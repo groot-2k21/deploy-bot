@@ -1,33 +1,33 @@
 import telebot
-import subprocess
-import os
-from bot_config import TOKEN
+from bot_config import *
+from bot_check import *
 from datetime import datetime
+
 
 bot = telebot.TeleBot(TOKEN)
 
 
-# команды /start /help
 @bot.message_handler(commands=['start', 'help'])
 def start_message(message):
-    resp = """Я умею обновлять комплексы.
+    """Обработка команд"""
+    resp = """
+    Я умею обновлять комплексы.
 
-Для этого мне нужно одной строкой передать три параметра через пробел:
-- update -- команда
-- <hostname|ipaddress> -- хостнэйм или IP адрес
-- <url_link_архива_с_обновлением> -- ссылка на архив.
-
-Пример: update klba008-pc1.da http://teamcity.dev.local/artifacts/kop/kop.1.21_RC5_build_900.tar.xz"""
+    Для этого мне нужно одной строкой передать три параметра через пробел:
+    - update -- команда
+    - <hostname|ipaddress> -- хостнэйм или IP адрес
+    - <url_link_архива_с_обновлением> -- ссылка на архив.
+    
+    Пример: update klba008-pc1.da http://teamcity.dev.local/artifacts/kop/kop.1.21_RC5_build_900.tar.xz"""
     bot.send_message(message.chat.id, resp)
 
 
-# обработка ответа пользователя
 @bot.message_handler(content_types=['text'])
 def get_params(message):
-    command = host = url = archive = None
+    """Обработка ответа пользователя"""
 
     # проверка отправителя
-    true_chat = is_deploy_group(message.chat.type, message.chat.id)
+    true_chat = check_deploy_group(message.chat.id, conf_accept_group)
     if not true_chat:
         bot.send_message(message.chat.id, "Я тебя не знаю. Уходи.")
         return
@@ -36,7 +36,7 @@ def get_params(message):
         command, host, url = message.text.split()
         archive = url.split("/")[-1]
 
-        true_command = check_command(command)
+        true_command = check_correct_bor_command(command)
         if not true_command:
             bot.send_message(message.chat.id,
                              f"Я не понял вашу команду <i><b>{command}</b></i>.\nУточнить поддерживаемые команды /help",
@@ -44,7 +44,7 @@ def get_params(message):
             return
 
         # комплекс сейчас онлайн
-        is_online = complex_is_online(host)
+        is_online = check_complex_is_online(host)
         if not is_online:
             bot.send_message(message.chat.id, f"<i><b>{host}</b></i> сейчас не доступен. Попробуйте позже.",
                              parse_mode="HTML")
@@ -154,48 +154,5 @@ def update_step4(message, host, url, archive):
     else:
         status = "[ERROR]"
         bot.edit_message_text(chat_id=message.chat.id, message_id=msg.message_id, text=resp4 + status)
-
-
-###################
-
-# проверка команды
-def check_command(command):
-    if command == "update":
-        return True
-    else:
-        return False
-
-
-# проверка пингом
-def complex_is_online(host):
-    cmd = f"ping -W5 -c1 {host} | grep ttl | wc -l"
-    pipe = os.popen(cmd)
-
-    if int(pipe.read()) == 1:
-        return True
-    else:
-        return False
-
-
-# проверка отправителя сообщения
-def is_deploy_group(chat_type, chat_id):
-    if chat_type == "supergroup" and str(chat_id) == "-1001190227999":
-        return True
-    else:
-        return False
-
-
-# Проверка корректности ссылки на архив с обновлением
-def check_url(url):
-    cmd = f'curl -I {url} 2>/dev/null | head -n 1 | cut -d" " -f2 > /tmp/wget'
-    code = subprocess.call(cmd, shell=True)
-
-    with open("/tmp/wget", "r") as f:
-        code = int(f.readline())
-        if code == 404:
-            return False
-        else:
-            return True
-
 
 bot.polling()
